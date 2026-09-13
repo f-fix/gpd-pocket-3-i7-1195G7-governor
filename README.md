@@ -51,7 +51,7 @@ Unlike older architectures that required background Python governors, core-parki
 
 * **[Linux Kernel `intel_rapl` / `powercap`](https://www.kernel.org/doc/html/latest/power/powercap/powercap.html)**: Native sysfs power capping interface for Tiger Lake-U PL1 (sustained) and PL2 (burst) wattage limits.
 * **[Linux Kernel `intel_pstate`](https://www.kernel.org/doc/html/latest/admin-guide/pm/intel_pstate.html)**: Hardware-controlled P-States (HWP) and Energy Performance Preference (EPP) scaling.
-* **[Linux Kernel `gpd-fan`](https://git.kernel.org/)**: Mainline Linux kernel driver providing native EC fan curve support for modern GPD hardware.
+* **[`gpd-fan-driver` (Cryolitia/gpd-fan-driver)](https://github.com/Cryolitia/gpd-fan-driver)**: The upstream Linux kernel driver repository (mainline `drivers/hwmon/gpd-fan.c`, see also the [Kernel Driver Documentation](https://docs.kernel.org/hwmon/gpd-fan.html)) providing native EC fan monitoring and PWM speed controls for modern GPD hardware.
 * **[Debian `initramfs-tools`](https://wiki.debian.org/initramfs-tools)**: Hook architecture used to inject the C watchdog and required input/display modules into the boot ramdisk.
 
 ---
