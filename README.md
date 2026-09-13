@@ -139,3 +139,6 @@ When the physical power button is pressed during early boot, the watchdog inspec
 ├── scripts/init-top/gpd_pocket_3_power # Launches watchdog post-udev in ramdisk
 └── scripts/init-bottom/gpd_pocket_3_power # Hands off to systemd upon rootfs mount
 ```
+
+## 🤖 Note on the code and the tools used to write it
+Parts of this code were written (including some initial ones that began in other, separate projects) with assistance from LLM-integrated coding tools. If you don't like it, feel free to use other software or rewrite parts you dislike. PRs are welcome!
