@@ -1,8 +1,8 @@
-# GPD Pocket 3 CPU & Power Suite
+# GPD Pocket 3 (i7-1195G7) CPU & Power Suite
 
-> **GPD Pocket 3 CPU & Fan control for Debian using gpd-fan**
+> **GPD Pocket 3 (Intel Core i7-1195G7) CPU & Fan control for Debian using native kernel drivers**
 
-A lightweight, hardware-locked early-boot initramfs watchdog and runtime power-tuning toolkit tailored specifically for the **GPD Pocket 3 Flagship Edition** (Intel Core i7-1195G7 Tiger Lake-U) running **Debian GNU/Linux** (Trixie/Sid, Linux 6.12+ kernels, UEFI, and LUKS+LVM).
+A lightweight, hardware-locked early-boot initramfs watchdog and persistent runtime power-tuning toolkit tailored specifically for the **GPD Pocket 3 Flagship Edition** (Intel Core i7-1195G7 Tiger Lake-U) running **Debian GNU/Linux** (the only actually confirmed supported OS so far is **Debian forky/sid (unstable)**, with Linux 6.12+ kernels, UEFI, and LUKS+LVM).
 
 ---
 
@@ -11,7 +11,8 @@ A lightweight, hardware-locked early-boot initramfs watchdog and runtime power-t
 1. **The Early-Boot / LUKS Battery Drain**: Sitting at an early-boot ramdisk passphrase prompt leaves 8 CPU threads active with Intel Turbo Boost enabled, drawing unnecessary wattage and draining the battery if powered on accidentally in a bag or pocket.
 2. **Missing Early ACPI Power Handling**: In the early initramfs phase before `systemd-logind` starts, tapping the hardware power button does nothing, leaving users unable to safely abort a boot.
 3. **Storage Corruption Risks During Boot**: Powering off abruptly during an automatic early-boot `fsck` repair or journal replay risks metadata inconsistency.
-4. **Tiger Lake Fan & Thermal Spikes**: Unrestricted 28W+ PL2 turbo bursts ramp the active cooling fan during basic tasks (reading, terminal work, text editing) on battery.
+4. **Premature Auto-Dimming & Suspend**: Unconditional inactivity timers in early boot can dim or suspend the system during disk checks (`fsck`), pre-prompt storage initialization, or post-passphrase LVM2 setup.
+5. **Tiger Lake Fan & Thermal Spikes**: Unrestricted 28W+ PL2 turbo bursts ramp the active cooling fan during basic tasks (reading, terminal work, text editing) on battery.
 
 ---
 
@@ -23,23 +24,24 @@ Unlike older architectures that required background Python governors, core-parki
 ┌─────────────────────────────────────────────────────────────────────────────────────────┐
 │ 1. Early Boot Ramdisk (Initramfs init-top)                                              │
 │    • gpd-pocket-3-power-watchdog (C Micro-Daemon)                                       │
-│      - 0.00% CPU kernel poll() on /dev/input/event*                                     │
-│      - Enforces quiet initramfs profile (Turbo disabled, EPP balance_power)             │
-│      - 30s Inactivity ──► Dims display to step floor (1% minimum clamp)                 │
-│      - 60s Inactivity ──► Enters S3 / s2idle low-power sleep                            │
-│      - Power Button Tap ──► Waits for active fsck to finish, then issues ACPI Poweroff  │
-│      - Hotkey Brightness ──► Dynamic 20-step GNOME-matching brightness engine           │
+│      - Prompt-Gated Timer: Inactivity dim (30s) / sleep (60s) ONLY runs during prompts  │
+│      - Zero Dimming during fsck: Auto-detects running fsck and inhibits idle timers     │
+│      - Safe ACPI Poweroff: Defers power button shutdown until active fsck completes     │
+│      - Hotkey Brightness: Dynamic 20-step GNOME-matching brightness engine              │
+│      - Quiet Initramfs Baseline: Turbo disabled, EPP balance_power                      │
 └────────────────────────────────────────────┬────────────────────────────────────────────┘
                                              │ (Handoff to rootfs via init-bottom)
                                              ▼
 ┌─────────────────────────────────────────────────────────────────────────────────────────┐
 │ 2. Post-Boot Runtime (Clean Userland - No Background Daemons)                           │
-│    • gpd-pocket-3-i7-1195G7-lowpower [on|off|status]                                    │
+│    • gpd-pocket-3-i7-1195G7-lowpower [on|off|status|apply-saved]                        │
 │      - Clamps Intel RAPL power limits (8W PL1 / 12W PL2 vs 20W PL1 / 28W PL2)           │
 │      - Toggles Intel Speed Shift Energy Performance Preference (EPP)                    │
 │      - Caps pstate frequency ceiling without offlining cores or breaking scheduling     │
+│    • Systemd Power Profile Persistence (gpd-pocket-3-power.service)                     │
+│      - Oneshot unit restores saved on/off profile on boot (/etc/gpd-pocket-3-lowpower)  │
 │    • Native Kernel Fan Control                                                          │
-│      - Handled seamlessly by the upstream Linux gpd-fan driver & hardware Fn toggle     │
+│      - Handled seamlessly by upstream Linux gpd-fan driver & hardware Fn toggle         │
 │    • Multi-Machine Safe Guard                                                           │
 │      - Validates i7-1195G7 & DMI strings (Pocket 3 / G1621-02); dormant on other PCs    │
 └─────────────────────────────────────────────────────────────────────────────────────────┘
@@ -51,7 +53,7 @@ Unlike older architectures that required background Python governors, core-parki
 
 * **[Linux Kernel `intel_rapl` / `powercap`](https://www.kernel.org/doc/html/latest/power/powercap/powercap.html)**: Native sysfs power capping interface for Tiger Lake-U PL1 (sustained) and PL2 (burst) wattage limits.
 * **[Linux Kernel `intel_pstate`](https://www.kernel.org/doc/html/latest/admin-guide/pm/intel_pstate.html)**: Hardware-controlled P-States (HWP) and Energy Performance Preference (EPP) scaling.
-* **[`gpd-fan-driver` (Cryolitia/gpd-fan-driver)](https://github.com/Cryolitia/gpd-fan-driver)**: The upstream Linux kernel driver repository (mainline `drivers/hwmon/gpd-fan.c`, see also the [Kernel Driver Documentation](https://docs.kernel.org/hwmon/gpd-fan.html)) providing native EC fan monitoring and PWM speed controls for modern GPD hardware.
+* **[`gpd-fan-driver` (Cryolitia/gpd-fan-driver)](https://github.com/Cryolitia/gpd-fan-driver)**: The upstream Linux kernel driver repository (`drivers/hwmon/gpd-fan.c`) providing native EC fan monitoring and PWM speed controls.
 * **[Debian `initramfs-tools`](https://wiki.debian.org/initramfs-tools)**: Hook architecture used to inject the C watchdog and required input/display modules into the boot ramdisk.
 
 ---
@@ -77,36 +79,25 @@ chmod +x gpd-pocket-3-i7-1195G7-governor.py
 ./gpd-pocket-3-i7-1195G7-governor.py --install
 ```
 
-The installer will compile `/usr/local/bin/gpd-pocket-3-power-watchdog`, register the `initramfs-tools` hooks, rebuild the initramfs (`update-initramfs -u`), and deploy the `gpd-pocket-3-i7-1195G7-lowpower` CLI tool.
-
 ---
 
 ## 💻 CLI Usage
 
-Manage runtime performance profiles without background daemon overhead:
+Manage runtime performance profiles persistently without background daemon overhead:
 
 ```bash
-# Check active wattage limits, Turbo status, and EPP
+# Check active wattage limits, Turbo status, EPP, and persistent state
 gpd-pocket-3-i7-1195G7-lowpower status
 
 # Activate Whisper-Quiet Mode (8W PL1 / 12W PL2, Turbo Off, EPP=power, max_perf=50%)
+# (Persists across reboots via gpd-pocket-3-power.service)
 gpd-pocket-3-i7-1195G7-lowpower on
 
 # Restore Full Performance Mode (20W PL1 / 28W PL2, Turbo On up to 5.0GHz, EPP=balance_performance)
+# (Persists across reboots via gpd-pocket-3-power.service)
 gpd-pocket-3-i7-1195G7-lowpower off
 ```
 *(Automatically prompts for `sudo` if run as an unprivileged user).*
-
-### Checking Watchdog Logs
-
-To verify early-boot execution or investigate boot-time events:
-```bash
-# Read dedicated ramdisk log
-cat /run/gpd_pocket_3_power.log
-
-# Inspect kernel ring buffer logs
-sudo dmesg | grep gpd-pocket-3-watchdog
-```
 
 ---
 
@@ -117,10 +108,16 @@ The C watchdog queries `/sys/class/backlight/intel_backlight/max_brightness` dyn
 * `min_brightness = ⌊max / 100⌋` (1% minimum clamp so the screen never blanks out at step 0)
 * `step_size = ⌊(max - min) / 20⌋`
 * `brightness(step) = min + (step × step_size)` for steps 0 through 20 (5% per step)
-* Brightness hotkeys (Fn+F5/Fn+F6) operate during the LUKS prompt and seamlessly restore brightness after S3 suspend/resume cycles.
+* Brightness hotkeys operate during the LUKS prompt and seamlessly restore brightness after S3 suspend/resume cycles.
 
-### 2. `fsck`-Aware Safe Power-Off
-When the physical power button is pressed during early boot, the watchdog inspects `/proc/[pid]/stat` for active filesystem checks (`fsck`, `e2fsck`, `dosfsck`, `btrfsck`, `xfs_repair`). If a repair task is running, it defers shutdown until disk repairs complete cleanly, issues `sync()`, and safely invokes `reboot(RB_POWER_OFF)`.
+### 2. Prompt-Gated Inactivity Timer & `fsck` Safety
+* `is_user_prompt_active()` scans `/proc` for interactive passphrase query processes (`askpass`, `cryptsetup`, `systemd-ask-password`, `plymouth`, emergency login). Inactivity auto-dim (30s) and auto-suspend (60s) **only** operate while an interactive input query is active.
+* Screen brightness automatically restores to user brightness the instant the prompt completes.
+* `is_fsck_running()` identifies running disk repair tasks (`fsck`, `fsck.*`, `e2fsck`, `dosfsck`, `btrfsck`, `xfs_repair`) and prevents auto-dimming. Power button presses safely wait up to 60s for active disk checks to finish before poweroff.
+
+### 3. Debian-Safe Guard Blocks & Remnant Cleanup
+* Module configuration in `/etc/initramfs-tools/modules` is enclosed in Debian-safe guard blocks (`### BEGIN GPD Pocket 3 (Intel Core i7-1195G7) MODULES ... ###`), preserving custom user entries.
+* Deprecated hook scripts and obsolete binary artifacts from older versions are automatically cleaned up during installation.
 
 ---
 
@@ -128,11 +125,14 @@ When the physical power button is pressed during early boot, the watchdog inspec
 
 ```text
 /usr/local/bin/
-├── gpd-pocket-3-i7-1195G7-lowpower     # CLI RAPL & EPP power profile switcher
+├── gpd-pocket-3-i7-1195G7-lowpower     # CLI persistent RAPL & EPP power switcher
 └── gpd-pocket-3-power-watchdog         # Compiled C early-boot micro-daemon
 
 /usr/local/src/
 └── gpd-pocket-3-power-watchdog.c       # Source code for the ramdisk C watchdog
+
+/etc/systemd/system/
+└── gpd-pocket-3-power.service          # Oneshot persistence service restoring profile on boot
 
 /etc/initramfs-tools/
 ├── hooks/gpd_pocket_3_power            # Copies C watchdog into initrd cpio
